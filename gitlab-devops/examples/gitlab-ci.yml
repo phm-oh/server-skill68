@@ -1,0 +1,76 @@
+# .gitlab-ci.yml - CI/CD Pipeline สำหรับการแข่งขัน DevOps
+# เรียบง่าย รวดเร็ว - Build และ Deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+  REGISTRY_URL: "192.168.100.101:5050"
+  BACKEND_IMAGE: $CI_REGISTRY_IMAGE/backend
+  FRONTEND_IMAGE: $CI_REGISTRY_IMAGE/frontend
+
+stages:
+  - build
+  - deploy
+
+# Build Backend
+build-backend:
+  stage: build
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      command: ["--insecure-registry=192.168.100.101:5050"]
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - cd backend
+    - docker build -t $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker tag $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA $BACKEND_IMAGE:latest
+    - docker push $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $BACKEND_IMAGE:latest
+  tags:
+    - docker
+  only:
+    changes:
+      - backend/**/*
+
+# Build Frontend
+build-frontend:
+  stage: build
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      command: ["--insecure-registry=192.168.100.101:5050"]
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - cd frontend
+    - docker build -t $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker tag $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA $FRONTEND_IMAGE:latest
+    - docker push $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $FRONTEND_IMAGE:latest
+  tags:
+    - docker
+  only:
+    changes:
+      - frontend/**/*
+
+# Deploy to Production
+deploy-production:
+  stage: deploy
+  image: docker:24
+  services:
+    - name: docker:24-dind
+      command: ["--insecure-registry=192.168.100.101:5050"]
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - echo "Deploying to Production..."
+    - echo "Run on VM2: docker compose pull && docker compose up -d"
+  environment:
+    name: production
+    url: http://192.168.100.102
+  tags:
+    - docker
+  only:
+    - main
+  when: manual

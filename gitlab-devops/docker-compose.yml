@@ -1,0 +1,79 @@
+# Docker Compose: GitLab CE + GitLab Runner
+# VM1 IP: 192.168.100.101
+
+services:
+  gitlab:
+    image: 'gitlab/gitlab-ce:17.6.1-ce.0'
+    container_name: gitlab
+    restart: always
+    hostname: 'gitlab.local'
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://192.168.100.101'
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+        registry_external_url 'http://192.168.100.101:5050'
+        gitlab_rails['registry_enabled'] = true
+        registry['enable'] = true
+        registry_nginx['listen_port'] = 5050
+        registry_nginx['listen_https'] = false
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        gitlab_rails['initial_root_password'] = 'DevOps@2024!'
+        gitlab_rails['store_initial_root_password'] = true
+    ports:
+      - '80:80'
+      - '2222:22'
+      - '5050:5050'
+    volumes:
+      - gitlab_config:/etc/gitlab
+      - gitlab_logs:/var/log/gitlab
+      - gitlab_data:/var/opt/gitlab
+    shm_size: '256m'
+    networks:
+      - devops-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/-/health"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 300s
+
+  gitlab-runner:
+    image: 'gitlab/gitlab-runner:v17.6.0'
+    container_name: gitlab-runner
+    restart: always
+    privileged: true
+    volumes:
+      - gitlab_runner_config:/etc/gitlab-runner
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - devops-network
+    depends_on:
+      gitlab:
+        condition: service_healthy
+
+  grafana:
+    image: 'grafana/grafana:10.2.0'
+    container_name: grafana
+    restart: always
+    ports:
+      - '3000:3000'
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - devops-network
+
+networks:
+  devops-network:
+    driver: bridge
+
+volumes:
+  gitlab_config:
+  gitlab_logs:
+  gitlab_data:
+  gitlab_runner_config:
+  grafana_data:

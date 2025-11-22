@@ -10,7 +10,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Copy source code
 COPY . .
@@ -31,6 +31,9 @@ COPY --from=builder --chown=nodejs:nodejs /app .
 # Set environment
 ENV NODE_ENV=production
 ENV PORT=3000
+
+# Create uploads directory with correct permissions
+RUN mkdir -p uploads && chown -R nodejs:nodejs uploads
 
 # Switch to non-root user
 USER nodejs

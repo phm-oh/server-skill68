@@ -1,0 +1,124 @@
+[
+    {
+        "id": "e6b7320325e82796",
+        "type": "tab",
+        "label": "MQTT to Backend",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "mqtt-in-room1",
+        "type": "mqtt in",
+        "z": "e6b7320325e82796",
+        "name": "Room 1",
+        "topic": "room1/temperature",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "mqtt-broker",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 150,
+        "y": 100,
+        "wires": [
+            [
+                "http-request-room1"
+            ]
+        ]
+    },
+    {
+        "id": "http-request-room1",
+        "type": "http request",
+        "z": "e6b7320325e82796",
+        "name": "Send to Backend",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://backend:3000/api/mqtt/room1",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 400,
+        "y": 100,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "mqtt-in-room2",
+        "type": "mqtt in",
+        "z": "e6b7320325e82796",
+        "name": "Room 2",
+        "topic": "room2/temperature",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "mqtt-broker",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 150,
+        "y": 180,
+        "wires": [
+            [
+                "http-request-room2"
+            ]
+        ]
+    },
+    {
+        "id": "http-request-room2",
+        "type": "http request",
+        "z": "e6b7320325e82796",
+        "name": "Send to Backend",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "http://backend:3000/api/mqtt/room2",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 400,
+        "y": 180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "mqtt-broker",
+        "type": "mqtt-broker",
+        "name": "Mosquitto",
+        "broker": "mqtt",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    }
+]
+

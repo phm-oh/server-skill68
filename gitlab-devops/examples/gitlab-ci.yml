@@ -1,10 +1,7 @@
-# .gitlab-ci.yml - CI/CD Pipeline สำหรับการแข่งขัน DevOps
-# เรียบง่าย รวดเร็ว - Build และ Deploy
-
 variables:
   DOCKER_DRIVER: overlay2
   DOCKER_TLS_CERTDIR: ""
-  REGISTRY_URL: "192.168.100.101:5050"
+  REGISTRY_URL: "192.168.100.130:5050"
   BACKEND_IMAGE: $CI_REGISTRY_IMAGE/backend
   FRONTEND_IMAGE: $CI_REGISTRY_IMAGE/frontend
 
@@ -18,7 +15,7 @@ build-backend:
   image: docker:24
   services:
     - name: docker:24-dind
-      command: ["--insecure-registry=192.168.100.101:5050"]
+      command: ["--insecure-registry=192.168.100.130:5050"]
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
@@ -30,6 +27,8 @@ build-backend:
   tags:
     - docker
   only:
+    refs:
+      - main
     changes:
       - backend/**/*
 
@@ -39,7 +38,7 @@ build-frontend:
   image: docker:24
   services:
     - name: docker:24-dind
-      command: ["--insecure-registry=192.168.100.101:5050"]
+      command: ["--insecure-registry=192.168.100.130:5050"]
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
@@ -51,26 +50,33 @@ build-frontend:
   tags:
     - docker
   only:
+    refs:
+      - main
     changes:
       - frontend/**/*
 
-# Deploy to Production
+# Deploy to Production (Auto Deploy)
 deploy-production:
   stage: deploy
-  image: docker:24
-  services:
-    - name: docker:24-dind
-      command: ["--insecure-registry=192.168.100.101:5050"]
+  image: alpine:latest
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - apk add --no-cache openssh-client
+    - eval $(ssh-agent -s)
+    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - ssh-keyscan 192.168.100.131 >> ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
   script:
     - echo "Deploying to Production..."
-    - echo "Run on VM2: docker compose pull && docker compose up -d"
+    # ส่งไฟล์ docker-compose.prod.yml ไปทับ docker-compose.yml ที่ VM2
+    - scp -o StrictHostKeyChecking=no docker-compose.prod.yml dev@192.168.100.131:~/vm2-production/docker-compose.yml
+    # สั่ง Deploy
+    - ssh -o StrictHostKeyChecking=no dev@192.168.100.131 "cd ~/vm2-production && docker-compose pull && docker-compose down && docker-compose up -d"
   environment:
     name: production
-    url: http://192.168.100.102
+    url: http://192.168.100.131
   tags:
     - docker
   only:
     - main
-  when: manual

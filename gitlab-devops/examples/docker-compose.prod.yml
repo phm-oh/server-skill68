@@ -6,7 +6,7 @@ services:
   # Backend API
   # ==========================================================================
   backend:
-    image: 192.168.100.101:5050/root/devops-project/backend:latest
+    image: 192.168.100.130:5050/root/devops-project/backend:latest
     container_name: backend
     restart: always
     ports:
@@ -16,18 +16,21 @@ services:
       - PORT=3000
       - DB_HOST=db
       - DB_PORT=3306
-      - DB_NAME=devops
+      - DB_NAME=devops_db
       - DB_USER=devops
       - DB_PASSWORD=devops123
       - JWT_SECRET=your-super-secret-jwt-key-change-this
+      - MQTT_BROKER=mqtt://mqtt:1883
     depends_on:
       db:
         condition: service_healthy
+      mqtt:
+        condition: service_started
     networks:
       - app-network
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 3
 
@@ -35,18 +38,20 @@ services:
   # Frontend
   # ==========================================================================
   frontend:
-    image: 192.168.100.101:5050/root/devops-project/frontend:latest
+    image: 192.168.100.130:5050/root/devops-project/frontend:latest
     container_name: frontend
     restart: always
     ports:
       - "80:80"
+    environment:
+      - API_URL=http://backend:3000
     depends_on:
       - backend
     networks:
       - app-network
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:80"]
-      interval: 30s
+      interval: 60s
       timeout: 10s
       retries: 3
 
@@ -59,7 +64,7 @@ services:
     restart: always
     environment:
       - MARIADB_ROOT_PASSWORD=root123
-      - MARIADB_DATABASE=devops
+      - MARIADB_DATABASE=devops_db
       - MARIADB_USER=devops
       - MARIADB_PASSWORD=devops123
     volumes:
@@ -95,9 +100,47 @@ services:
     networks:
       - app-network
 
+  # ==========================================================================
+  # MQTT Broker (Mosquitto)
+  # ==========================================================================
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: mqtt
+    restart: always
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+    networks:
+      - app-network
+
+  # ==========================================================================
+  # Node-RED (Logic Flow)
+  # ==========================================================================
+  nodered:
+    image: nodered/node-red:3.1
+    container_name: nodered
+    restart: always
+    ports:
+      - "1880:1880"
+    environment:
+      - TZ=Asia/Bangkok
+    volumes:
+      - nodered_data:/data
+      - ./nodered/flows.json:/data/flows.json
+    depends_on:
+      - mqtt
+      - backend
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
 
 volumes:
   db_data:
+  nodered_data:

@@ -9,8 +9,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (แก้ ci เป็น install)
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -26,9 +26,6 @@ COPY nginx.conf /etc/nginx/nginx.conf
 
 # Copy built files from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
-
-# สำหรับ Nuxt SSR ให้ใช้ .output แทน dist
-# COPY --from=builder /app/.output/public /usr/share/nginx/html
 
 # Expose port
 EXPOSE 80

@@ -1,0 +1,136 @@
+# ===========================================
+# 🚀 GitLab CI/CD Pipeline
+# สำหรับการแข่งขันทักษะวิชาชีพ
+# ===========================================
+# ไฟล์นี้วางไว้ที่ root ของ project
+# ชื่อไฟล์: .gitlab-ci.yml
+# ===========================================
+
+stages:
+  - build
+  - push
+  - deploy
+
+variables:
+  # Registry settings
+  REGISTRY: "192.168.100.101:5000"
+  
+  # Image names
+  BACKEND_IMAGE: "$REGISTRY/skill68-backend"
+  FRONTEND_IMAGE: "$REGISTRY/skill68-frontend"
+  
+  # Production server
+  PROD_SERVER: "192.168.100.102"
+  PROD_USER: "user"  # แก้เป็น username จริง
+
+# ===========================================
+# Build Stage
+# ===========================================
+
+build-backend:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - echo "🔨 Building Backend..."
+    - cd backend
+    - docker build -t $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker tag $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA $BACKEND_IMAGE:latest
+  only:
+    - main
+    - master
+
+build-frontend:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - echo "🔨 Building Frontend..."
+    - cd frontend
+    - docker build -t $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA .
+    - docker tag $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA $FRONTEND_IMAGE:latest
+  only:
+    - main
+    - master
+
+# ===========================================
+# Push Stage
+# ===========================================
+
+push-images:
+  stage: push
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - echo "📦 Pushing to Registry..."
+    # Push Backend
+    - docker push $BACKEND_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $BACKEND_IMAGE:latest
+    # Push Frontend
+    - docker push $FRONTEND_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $FRONTEND_IMAGE:latest
+  only:
+    - main
+    - master
+
+# ===========================================
+# Deploy Stage
+# ===========================================
+
+deploy-production:
+  stage: deploy
+  image: alpine:latest
+  before_script:
+    # ติดตั้ง SSH client
+    - apk add --no-cache openssh-client
+    # สร้าง SSH key (ต้องตั้งค่า SSH_PRIVATE_KEY ใน GitLab CI/CD Variables)
+    - mkdir -p ~/.ssh
+    - echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+    - chmod 600 ~/.ssh/id_rsa
+    - ssh-keyscan -H $PROD_SERVER >> ~/.ssh/known_hosts
+  script:
+    - echo "🚀 Deploying to Production..."
+    - |
+      ssh $PROD_USER@$PROD_SERVER << 'ENDSSH'
+        cd /opt/app
+        
+        # Pull latest images
+        docker pull 192.168.100.101:5000/skill68-backend:latest
+        docker pull 192.168.100.101:5000/skill68-frontend:latest
+        
+        # Restart containers
+        docker compose down
+        docker compose up -d
+        
+        echo "✅ Deployment complete!"
+      ENDSSH
+  only:
+    - main
+    - master
+  when: manual  # ต้องกดปุ่ม Deploy เอง
+
+# ===========================================
+# Alternative: Deploy without SSH (ง่ายกว่า)
+# ===========================================
+# ถ้าไม่อยากใช้ SSH ให้ใช้วิธีนี้แทน:
+# 1. นักเรียน push code
+# 2. Pipeline build & push image
+# 3. กรรมการ/นักเรียน ssh เข้า VM2 แล้วรัน docker compose up -d เอง
+
+deploy-simple:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - echo "✅ Images pushed to registry!"
+    - echo ""
+    - echo "📋 To deploy manually on VM2 (ssh user@192.168.100.102)"
+    - echo "  cd /opt/app"
+    - echo "  docker compose pull"
+    - echo "  docker compose up -d"
+  only:
+    - main
+    - master
+  when: manual

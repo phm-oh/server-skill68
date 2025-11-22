@@ -1,0 +1,97 @@
+# ===========================================
+# docker-compose.yml สำหรับ Production (VM2)
+# ===========================================
+# วางไฟล์นี้ที่: /opt/app/docker-compose.yml บน VM2
+# ===========================================
+
+services:
+  # ===========================================
+  # Database - MySQL
+  # ===========================================
+  db:
+    image: mysql:8.0
+    container_name: db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root1234
+      MYSQL_DATABASE: skill68_db
+      MYSQL_USER: skill68
+      MYSQL_PASSWORD: skill1234
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      # ถ้ามีไฟล์ schema.sql ให้ mount ด้วย
+      # - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    networks:
+      - app_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================
+  # Backend - Node.js API
+  # ===========================================
+  backend:
+    image: 192.168.100.101:5000/skill68-backend:latest
+    container_name: backend
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=skill68
+      - DB_PASS=skill1234
+      - DB_NAME=skill68_db
+      - JWT_SECRET=your-secret-key-here
+    ports:
+      - "3000:3000"
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app_net
+
+  # ===========================================
+  # Frontend - Vue.js (Nginx)
+  # ===========================================
+  frontend:
+    image: 192.168.100.101:5000/skill68-frontend:latest
+    container_name: frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - app_net
+
+  # ===========================================
+  # phpMyAdmin (Optional - สำหรับจัดการ DB)
+  # ===========================================
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    restart: always
+    environment:
+      - PMA_HOST=db
+      - PMA_PORT=3306
+    ports:
+      - "8081:80"
+    depends_on:
+      - db
+    networks:
+      - app_net
+
+networks:
+  app_net:
+    driver: bridge
+
+volumes:
+  db_data:
+  uploads:

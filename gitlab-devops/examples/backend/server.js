@@ -69,7 +69,7 @@ mqttClient.on('connect', () => {
   });
 });
 
-// รับข้อมูลจาก MQTT และบันทึกลง DB
+// รับข้อมูลจาก MQTT และบันทึกลง Database
 mqttClient.on('message', async (topic, message) => {
   try {
     const data = JSON.parse(message.toString());

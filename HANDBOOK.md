@@ -18,44 +18,224 @@
 
 **เป้าหมาย:** ติดตั้ง GitLab, Runner และระบบ Monitoring (Grafana)
 
-### Step 1: ติดตั้ง Docker & GitLab
-(ใช้ไฟล์ `docker-compose.yml` มาตรฐานของ GitLab)
-*สำคัญ:* ตรวจสอบ `external_url` ใน Config ต้องเป็น `http://192.168.100.130`
+### Step 1: SSH เข้า VM1 และเตรียมระบบ
 
-### Step 2: Register Runner (จุดที่ต้องแม่น)
-1. เข้าไปที่ container:
-```bash
-docker exec -it gitlab-runner gitlab-runner register
-```
-2. **URL:** `http://192.168.100.130`
-3. **Token:** (Copy จาก GitLab > Settings > CI/CD > Runners)
-4. **Name:** `docker-runner`
-5. **Executor:** `docker` (**ต้องพิมพ์ docker เท่านั้น**)
-6. **Image:** `docker:24`
+1. **SSH เข้า VM1:**
+   ```bash
+   ssh user@192.168.100.130
+   # หรือ
+   ssh dev@192.168.100.130
+   ```
 
-### Step 3: ปลดล็อค Runner (Privileged Mode)
-*ถ้าไม่ทำขั้นตอนนี้ จะ Build Docker Image ไม่ผ่าน (Error: docker command not found / connection refused)*
+2. **อัพเดทระบบ:**
+   ```bash
+   sudo apt update && sudo apt upgrade -y
+   sudo apt install -y curl git nano wget
+   ```
 
-1. แก้ไขไฟล์ Config:
-```bash
+### Step 2: ติดตั้ง Docker Engine (จาก Ubuntu Repository - ไม่ใช้ HTTPS)
+
+**วิธีนี้เร็วกว่าและง่ายกว่า** ไม่ต้องใช้ HTTPS certificate
+
+1. **ติดตั้ง Docker จาก Ubuntu repository:**
+   ```bash
+   sudo apt install -y docker.io docker-compose
+   ```
+
+2. **เพิ่ม user เข้า docker group (เพื่อไม่ต้องใช้ sudo):**
+   ```bash
+   sudo usermod -aG docker $USER
+   ```
+
+3. **ตรวจสอบการติดตั้ง:**
+   ```bash
+   docker --version
+   docker compose version
+   ```
+
+4. **⚠️ สำคัญ:** ต้อง **logout แล้ว login ใหม่** เพื่อให้ group ใหม่มีผล:
+   ```bash
+   exit
+   # แล้ว SSH เข้ามาใหม่
+   ssh user@192.168.100.130
+   ```
+
+5. **ทดสอบ Docker (ไม่ต้องใช้ sudo):**
+   ```bash
+   docker ps
+   # ควรเห็นรายการ containers (ถ้ามี) หรือ list ว่างๆ
+   ```
+
+### Step 3: ตั้งค่า Docker Daemon (Insecure Registry)
+
+เพื่อให้ Docker สามารถ pull/push images จาก GitLab Registry (HTTP) ได้
+
+1. **สร้าง/แก้ไข `/etc/docker/daemon.json`:**
+   ```bash
+   sudo mkdir -p /etc/docker
+   sudo tee /etc/docker/daemon.json > /dev/null <<EOF
+   {
+     "insecure-registries": [
+       "192.168.100.130:5050",
+       "gitlab.local:5050",
+       "localhost:5050"
+     ],
+     "log-driver": "json-file",
+     "log-opts": {
+       "max-size": "100m",
+       "max-file": "3"
+     }
+   }
+   EOF
+   ```
+
+2. **Restart Docker service:**
+   ```bash
+   sudo systemctl restart docker
+   ```
+
+3. **ตรวจสอบว่า config ถูกต้อง:**
+   ```bash
+   docker info | grep -A 5 "Insecure Registries"
+   # ควรเห็น 192.168.100.130:5050
+   ```
+
+### Step 4: สร้าง Docker Network และ Volumes
+
+1. **สร้าง network:**
+   ```bash
+   docker network create app_net 2>/dev/null || true
+   ```
+
+2. **สร้าง volumes สำหรับ GitLab:**
+   ```bash
+   for vol in gitlab_config gitlab_logs gitlab_data gitlab_runner_config registry_data portainer_data; do
+     docker volume create $vol 2>/dev/null || true
+   done
+   ```
+
+### Step 5: สร้าง docker-compose.yml สำหรับ GitLab
+
+1. **สร้างโฟลเดอร์สำหรับ config:**
+   ```bash
+   mkdir -p ~/gitlab-devops
+   cd ~/gitlab-devops
+   ```
+
+2. **สร้างไฟล์ `docker-compose.yml`** (ดูตัวอย่างใน `gitlab-devops/docker-compose.yml`)
+   *สำคัญ:* ตรวจสอบ `external_url` ใน Config ต้องเป็น `http://192.168.100.130`
+
+3. **เริ่ม GitLab:**
+   ```bash
+   docker compose up -d
+   ```
+
+4. **รอ GitLab boot (5-10 นาที):**
+   ```bash
+   docker compose logs -f gitlab
+   # กด Ctrl+C เมื่อเห็น "gitlab Reconfigured!" หรือ "gitlab configured successfully"
+   ```
+
+5. **ดู GitLab root password:**
+   ```bash
+   docker exec -it gitlab grep 'Password:' /etc/gitlab/initial_root_password
+   # หรือ
+   docker exec -it gitlab cat /etc/gitlab/initial_root_password
+   ```
+
+### Step 6: Register Runner (จุดที่ต้องแม่น)
+
+**⚠️ ต้องรอ GitLab พร้อมก่อน (5-10 นาที)**
+
+1. **เข้า GitLab Web UI:**
+   - เปิด browser: `http://192.168.100.130`
+   - Login: `root` / password ที่ได้จาก Step 5
+
+2. **หา Runner Token:**
+   - ไปที่ **Admin Area** (ไอคอน 🔧 มุมบนขวา)
+   - เลือก **CI/CD** → **Runners**
+   - คลิก **New instance runner**
+   - Copy **Token** (รูปแบบ: `glrt-xxxxxxxxxxxxxxxxxxxx`)
+   - **⚠️ เก็บ Token นี้ไว้ ต้องใช้ตอน register**
+
+3. **Register Runner (บน VM1):**
+   ```bash
+   docker exec -it gitlab-runner gitlab-runner register
+   ```
+
+4. **กรอกข้อมูลตามลำดับ:**
+   - **GitLab instance URL:** `http://192.168.100.130` (Enter)
+   - **Registration token:** วาง token ที่ copy มา (Enter)
+   - **Description:** `docker-runner` (Enter)
+   - **Tags:** (Enter - ข้าม)
+   - **Executor:** `docker` (**⚠️ ต้องพิมพ์ docker เท่านั้น ไม่ใช่ docker+machine หรือ shell**)
+   - **Default Docker image:** `docker:24` (Enter)
+
+5. **ตรวจสอบว่า register สำเร็จ:**
+   ```bash
+   docker exec gitlab-runner gitlab-runner list
+   # ควรเห็น runner ที่เพิ่ง register
+   ```
+
+6. **ตรวจสอบใน GitLab UI:**
+   - กลับไปที่ GitLab → Admin → CI/CD → Runners
+   - ควรเห็น runner ปรากฏ (อาจเป็นสีเหลือง "never contacted" ก่อน)
+
+### Step 7: ปลดล็อค Runner (Privileged Mode)
+
+**⚠️ ถ้าไม่ทำขั้นตอนนี้ จะ Build Docker Image ไม่ผ่าน!**
+**Error ที่จะเจอ:** `docker command not found` หรือ `connection refused`
+
+1. **แก้ไขไฟล์ Config:**
+   ```bash
    docker exec -it gitlab-runner vi /etc/gitlab-runner/config.toml
+   # หรือใช้ nano (ง่ายกว่า)
+   docker exec -it gitlab-runner nano /etc/gitlab-runner/config.toml
    ```
-2. ค้นหา `[runners.docker]` แล้วแก้ 2 บรรทัดนี้:
-```toml
-   privileged = true                            # เปลี่ยน false เป็น true
-   volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/cache"] # เพิ่ม docker.sock
+
+2. **ค้นหา `[runners.docker]` แล้วแก้ 2 บรรทัดนี้:**
+   ```toml
+   [runners.docker]
+     privileged = true                            # เปลี่ยน false เป็น true
+     volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/cache"] # เพิ่ม docker.sock
    ```
-3. Restart Runner:
+
+3. **บันทึกและออก:**
+   - ถ้าใช้ `vi`: กด `Esc` แล้วพิมพ์ `:wq` แล้ว Enter
+   - ถ้าใช้ `nano`: กด `Ctrl+X` แล้ว `Y` แล้ว Enter
+
+4. **Restart Runner:**
+   ```bash
+   docker restart gitlab-runner
+   ```
+
+5. **ตรวจสอบ config:**
+   ```bash
+   docker exec gitlab-runner cat /etc/gitlab-runner/config.toml | grep -A 5 "\[runners.docker\]"
+   # ต้องเห็น privileged = true
+   # ต้องเห็น volumes = ["/var/run/docker.sock:/var/run/docker.sock", "/cache"]
+   ```
+
+6. **ตรวจสอบใน GitLab UI:**
+   - ไปที่ GitLab → Admin → CI/CD → Runners
+   - Runner ควรเป็นสีเขียว "online" หรือ "active"
+
+### Step 8: Setup Grafana (Monitoring) - ถ้ามีในโจทย์
+
+ถ้าต้องใช้ Grafana ให้รัน Container เพิ่มใน VM1:
+
 ```bash
-docker restart gitlab-runner
+docker run -d \
+  --name=grafana \
+  --network=app_net \
+  -p 3000:3000 \
+  -e "GF_SECURITY_ADMIN_PASSWORD=admin123" \
+  grafana/grafana:latest
 ```
 
-### Step 4: Setup Grafana (Monitoring) - ถ้ามีในโจทย์
-ถ้าต้องใช้ Grafana ให้รัน Container เพิ่มใน VM1:
-```bash
-docker run -d --name=grafana -p 3000:3000 grafana/grafana
-```
-*URL:* `http://192.168.100.130:3000` (User: admin / Pass: admin)
+**URL:** `http://192.168.100.130:3000`  
+**Username:** `admin`  
+**Password:** `admin123` (หรือ password ที่ตั้งไว้)
 
 ---
 
@@ -63,39 +243,124 @@ docker run -d --name=grafana -p 3000:3000 grafana/grafana
 
 **เป้าหมาย:** เตรียมเครื่องปลายทางให้พร้อมรับการ Deploy และรันระบบ IoT (MQTT, Node-RED)
 
-### Step 1: ติดตั้ง Docker & Registry Config
-เพื่อให้ VM2 ดึง Image จาก VM1 (Insecure Registry) ได้
+### Step 1: SSH เข้า VM2 และเตรียมระบบ
 
-1. สร้าง/แก้ไข `/etc/docker/daemon.json`:
-```bash
-   sudo tee /etc/docker/daemon.json <<EOF
+1. **SSH เข้า VM2:**
+   ```bash
+   ssh user@192.168.100.131
+   # หรือ
+   ssh dev@192.168.100.131
+   ```
+
+2. **อัพเดทระบบ:**
+   ```bash
+   sudo apt update && sudo apt upgrade -y
+   sudo apt install -y curl git nano wget
+   ```
+
+### Step 2: ติดตั้ง Docker Engine (จาก Ubuntu Repository)
+
+**ใช้วิธีเดียวกับ VM1 - ติดตั้งจาก Ubuntu repository (ไม่ใช้ HTTPS)**
+
+1. **ติดตั้ง Docker:**
+   ```bash
+   sudo apt install -y docker.io docker-compose
+   ```
+
+2. **เพิ่ม user เข้า docker group:**
+   ```bash
+   sudo usermod -aG docker $USER
+   ```
+
+3. **⚠️ สำคัญ:** Logout แล้ว login ใหม่:
+   ```bash
+   exit
+   # แล้ว SSH เข้ามาใหม่
+   ssh user@192.168.100.131
+   ```
+
+4. **ทดสอบ Docker:**
+   ```bash
+   docker ps
+   ```
+
+### Step 3: ตั้งค่า Docker Daemon (Insecure Registry)
+
+**เพื่อให้ VM2 ดึง Image จาก VM1 (GitLab Registry) ได้**
+
+1. **สร้าง/แก้ไข `/etc/docker/daemon.json`:**
+   ```bash
+   sudo mkdir -p /etc/docker
+   sudo tee /etc/docker/daemon.json > /dev/null <<EOF
    {
-     "insecure-registries": ["192.168.100.130:5050"]
+     "insecure-registries": [
+       "192.168.100.130:5050",
+       "gitlab.local:5050",
+       "localhost:5050"
+     ],
+     "log-driver": "json-file",
+     "log-opts": {
+       "max-size": "100m",
+       "max-file": "3"
+     }
    }
    EOF
    ```
-2. Restart Docker:
-   ```bash
-sudo systemctl restart docker
-```
 
-### Step 2: สร้าง SSH Key (สำหรับ Auto Deploy)
-1. **บน VM2** สร้าง Key:
-```bash
+2. **Restart Docker:**
+   ```bash
+   sudo systemctl restart docker
+   ```
+
+3. **ตรวจสอบ config:**
+   ```bash
+   docker info | grep -A 5 "Insecure Registries"
+   # ต้องเห็น 192.168.100.130:5050
+   ```
+
+4. **ทดสอบ login ไป Registry:**
+   ```bash
+   docker login 192.168.100.130:5050
+   # Username: root
+   # Password: DevOps@2024! (หรือ password ที่ตั้งไว้ใน GitLab)
+   ```
+
+### Step 4: สร้าง SSH Key (สำหรับ Auto Deploy)
+
+**สำหรับให้ GitLab Runner สามารถ SSH เข้า VM2 เพื่อ deploy ได้**
+
+1. **บน VM2 สร้าง SSH Key:**
+   ```bash
+   mkdir -p ~/.ssh
+   chmod 700 ~/.ssh
    ssh-keygen -t rsa -b 4096 -C "gitlab-ci" -f ~/.ssh/id_rsa -N ""
-```
-2. อนุญาตให้ตัวเองเข้าได้ (Authorize Public Key):
-```bash
+   # -N "" = ไม่ต้องใส่ passphrase (เพื่อให้ auto deploy ทำงานได้)
+   ```
+
+2. **อนุญาตให้ตัวเองเข้าได้ (Authorize Public Key):**
+   ```bash
    cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
    chmod 600 ~/.ssh/authorized_keys
-   ```
-3. **Copy Private Key** เก็บไว้:
-   ```bash
-   cat ~/.ssh/id_rsa
-   # ก๊อปปี้ตั้งแต่ -----BEGIN... ถึง ...END-----
+   chmod 700 ~/.ssh
    ```
 
-### Step 3: เตรียม Config สำหรับ IoT Services
+3. **Copy Private Key เก็บไว้ (ต้องใช้ใน GitLab Variables):**
+   ```bash
+   cat ~/.ssh/id_rsa
+   ```
+   
+   **⚠️ สำคัญ:** ก๊อปปี้ output ทั้งหมดตั้งแต่ `-----BEGIN RSA PRIVATE KEY-----` ถึง `-----END RSA PRIVATE KEY-----` เก็บไว้
+   
+   **💡 Tip:** ใช้ `cat ~/.ssh/id_rsa | xclip -selection clipboard` (Linux) หรือ copy จาก terminal
+
+4. **ทดสอบ SSH เข้าตัวเอง:**
+   ```bash
+   ssh localhost
+   # ควรเข้าได้โดยไม่ต้องใส่ password
+   # ออกด้วย: exit
+   ```
+
+### Step 5: เตรียม Config สำหรับ IoT Services
 สร้างโฟลเดอร์และไฟล์ Config บน VM2 เพื่อให้ MQTT และ Node-RED ทำงานได้
 
 1. **สร้างโฟลเดอร์:**
@@ -281,32 +546,258 @@ deploy-production:
 
 ---
 
+## 💻 PART 3: Client Setup (เครื่องนักเรียน/Developer)
+
+**เป้าหมาย:** เตรียมเครื่อง Client ให้พร้อม push/pull code ไป GitLab
+
+### Step 1: ติดตั้ง Git (ถ้ายังไม่มี)
+
+**สำหรับ Windows:**
+- ดาวน์โหลด Git for Windows: https://git-scm.com/download/win
+- ติดตั้งและเลือก "Git Bash Here" ใน context menu
+
+**สำหรับ Linux/Ubuntu:**
+```bash
+sudo apt update
+sudo apt install -y git
+```
+
+**สำหรับ macOS:**
+```bash
+# Git มักติดตั้งมาพร้อม Xcode Command Line Tools
+git --version
+# ถ้ายังไม่มี: xcode-select --install
+```
+
+### Step 2: ตั้งค่า Git (ข้าม HTTPS Verification)
+
+**⚠️ สำคัญ:** เพราะ GitLab ใช้ HTTP (ไม่ใช่ HTTPS) ต้องตั้งค่า Git ให้ไม่ตรวจสอบ SSL
+
+1. **ตั้งค่า Git ให้ข้าม SSL verification:**
+   ```bash
+   git config --global http.sslVerify false
+   ```
+
+2. **ตั้งค่า Git user (แก้ไขตามชื่อจริง):**
+   ```bash
+   git config --global user.name "Your Name"
+   git config --global user.email "your.email@example.com"
+   ```
+
+3. **ตรวจสอบ config:**
+   ```bash
+   git config --global --list
+   # ต้องเห็น http.sslVerify = false
+   ```
+
+### Step 3: เพิ่ม Hosts Entry (Optional แต่แนะนำ)
+
+**เพื่อให้ใช้ domain name แทน IP address**
+
+**สำหรับ Linux/macOS:**
+```bash
+sudo nano /etc/hosts
+# หรือ
+sudo vi /etc/hosts
+```
+
+**เพิ่มบรรทัดนี้:**
+```
+192.168.100.130 gitlab.local registry.local
+192.168.100.131 prod.local
+```
+
+**สำหรับ Windows:**
+1. เปิด Notepad **เป็น Administrator**
+2. เปิดไฟล์: `C:\Windows\System32\drivers\etc\hosts`
+3. เพิ่มบรรทัดเดียวกัน
+
+### Step 4: Clone Project จาก GitLab
+
+1. **เข้า GitLab Web UI:**
+   - เปิด browser: `http://192.168.100.130`
+   - Login ด้วย account ที่สร้างไว้
+
+2. **สร้าง Project ใหม่ (ถ้ายังไม่มี):**
+   - คลิก **New project** หรือ **Create project**
+   - เลือก **Create blank project**
+   - ตั้งชื่อ: `devops-project` (หรือชื่ออื่น)
+   - เลือก **Visibility: Private** (หรือ Public)
+   - คลิก **Create project**
+
+3. **Clone project มาเครื่อง:**
+   ```bash
+   # ใช้ HTTP URL (ไม่ใช่ HTTPS)
+   git clone http://192.168.100.130/root/devops-project.git
+   # หรือถ้าใช้ domain name
+   git clone http://gitlab.local/root/devops-project.git
+   ```
+
+4. **เข้าไปในโฟลเดอร์:**
+   ```bash
+   cd devops-project
+   ```
+
+### Step 5: Push Code ไป GitLab
+
+1. **เพิ่มไฟล์ code:**
+   ```bash
+   # Copy code เข้ามาในโฟลเดอร์
+   # เช่น copy backend/ และ frontend/ เข้ามา
+   
+   # ตรวจสอบไฟล์ที่มี:
+   ls -la
+   ```
+
+2. **Add และ Commit:**
+   ```bash
+   git add .
+   git commit -m "Initial commit - Backend and Frontend"
+   ```
+
+3. **Push ไป GitLab:**
+   ```bash
+   git push -u origin main
+   # หรือถ้าใช้ branch master
+   git push -u origin master
+   ```
+
+4. **⚠️ ถ้าเจอ error "fatal: could not read Username":**
+   ```bash
+   # ต้องใส่ username และ password
+   # Username: root (หรือ username ที่ใช้ login)
+   # Password: DevOps@2024! (หรือ password ที่ตั้งไว้)
+   
+   # หรือตั้งค่า credential helper:
+   git config --global credential.helper store
+   # แล้ว push อีกครั้ง (จะถาม username/password ครั้งเดียว)
+   ```
+
+5. **ตรวจสอบใน GitLab:**
+   - กลับไปที่ GitLab Web UI
+   - ควรเห็นไฟล์ที่ push ไปแล้ว
+
+### Step 6: Pull Code จาก GitLab
+
+**เมื่อมีคนอื่น push code หรือแก้ไขใน GitLab:**
+
+```bash
+# Pull code ล่าสุด
+git pull origin main
+
+# หรือถ้าต้องการดูว่ามีอะไรเปลี่ยนแปลงก่อน
+git fetch origin
+git log HEAD..origin/main
+# แล้วค่อย pull
+git pull origin main
+```
+
+---
+
 ## 🚀 PART 4: การ Deploy และใช้งานจริง
 
-### Step 1: ตั้งค่า GitLab Variable
-1. ไปที่ GitLab > Settings > CI/CD > Variables
-2. เพิ่ม `SSH_PRIVATE_KEY` (Value: Private Key จาก VM2)
+### Step 1: ตั้งค่า GitLab Variable (SSH Private Key)
+
+1. **เข้า GitLab Web UI:**
+   - ไปที่ Project → **Settings** → **CI/CD** → **Variables**
+   - หรือ Admin Area → **Settings** → **CI/CD** → **Variables** (สำหรับ instance-level)
+
+2. **เพิ่ม Variable:**
+   - คลิก **Add variable**
+   - **Key:** `SSH_PRIVATE_KEY`
+   - **Value:** วาง Private Key ที่ copy จาก VM2 (Step 4 ใน PART 2)
+   - **Type:** Variable
+   - **Environment scope:** All environments
+   - **Flags:** ✅ Protect variable (ถ้าต้องการ)
+   - **Flags:** ✅ Mask variable (แนะนำ - จะไม่แสดงใน logs)
+   - คลิก **Add variable**
+
+3. **ตรวจสอบ:**
+   - ควรเห็น `SSH_PRIVATE_KEY` ในรายการ variables
 
 ### Step 2: เตรียม VM2 ครั้งแรก
-1. SSH เข้า VM2
-2. Login Registry: `docker login 192.168.100.130:5050`
-3. สร้างโฟลเดอร์ `~/vm2-production`
-4. **ไม่ต้องสร้างไฟล์ docker-compose.yml เอง!** (Pipeline จะส่งมาให้)
-   *แต่ต้องมั่นใจว่าโฟลเดอร์ `~/vm2-production` มี owner เป็น user ปัจจุบัน*
 
-### Step 3: Push Code & Enjoy
-1. Push code ขึ้น GitLab: `git push origin main`
-2. รอ Pipeline เขียวครบทุกขั้นตอน
-3. เข้าเว็บ: `http://192.168.100.131`
+1. **SSH เข้า VM2:**
+   ```bash
+   ssh user@192.168.100.131
+   ```
+
+2. **Login Registry:**
+   ```bash
+   docker login 192.168.100.130:5050
+   # Username: root
+   # Password: DevOps@2024!
+   ```
+
+3. **สร้างโฟลเดอร์ `~/vm2-production`:**
+   ```bash
+   mkdir -p ~/vm2-production
+   cd ~/vm2-production
+   ```
+
+4. **⚠️ สำคัญ:** ตรวจสอบว่าโฟลเดอร์มี owner เป็น user ปัจจุบัน:
+   ```bash
+   ls -la ~/vm2-production
+   # ต้องเห็น owner เป็น user ปัจจุบัน (เช่น dev)
+   
+   # ถ้าไม่ใช่ ให้แก้:
+   sudo chown -R $USER:$USER ~/vm2-production
+   ```
+
+5. **ไม่ต้องสร้างไฟล์ docker-compose.yml เอง!** 
+   - Pipeline จะส่งไฟล์ `docker-compose.prod.yml` มาทับ `docker-compose.yml` ให้อัตโนมัติ
+
+### Step 3: Push Code & Trigger Pipeline
+
+1. **บน Client machine:**
+   ```bash
+   cd devops-project
+   
+   # แก้ไข code (ถ้าต้องการ)
+   # ...
+   
+   # Commit และ Push
+   git add .
+   git commit -m "Update code"
+   git push origin main
+   ```
+
+2. **ตรวจสอบ Pipeline:**
+   - ไปที่ GitLab → **CI/CD** → **Pipelines**
+   - ควรเห็น pipeline ใหม่เริ่มทำงาน
+   - รอให้ build-backend และ build-frontend ผ่าน (สีเขียว)
+
+3. **Deploy (ถ้า pipeline มี deploy job):**
+   - Pipeline จะ deploy อัตโนมัติ หรือ
+   - คลิก **Play** button ที่ deploy job (ถ้าเป็น manual)
+
+4. **ตรวจสอบผลลัพธ์:**
+   - เข้าเว็บ: `http://192.168.100.131`
+   - ควรเห็น Frontend ทำงาน
 
 ### Step 4: ตรวจสอบ IoT Integration (MQTT & Node-RED)
-1. เข้า Node-RED: `http://192.168.100.131:1880`
-2. ตรวจสอบว่า MQTT Node เชื่อมต่อได้ (สีเขียว Connected)
-3. ทดสอบยิงข้อมูลเข้า MQTT (บน VM2):
-```bash
-   docker exec -it mqtt mosquitto_pub -t "room1/temperature" -m '{"temp": 25.5}'
+
+1. **เข้า Node-RED:**
+   - เปิด browser: `http://192.168.100.131:1880`
+   - Login: `admin` / `admin123`
+
+2. **ตรวจสอบ MQTT Node:**
+   - ดูว่า MQTT Node เชื่อมต่อได้ (สีเขียว "Connected")
+   - ถ้ายังไม่เชื่อมต่อ ให้ config MQTT broker: `mqtt:1883`
+
+3. **ทดสอบยิงข้อมูลเข้า MQTT (บน VM2):**
+   ```bash
+   # SSH เข้า VM2
+   ssh user@192.168.100.131
+   
+   # Publish ข้อมูลทดสอบ
+   docker exec -it mqtt mosquitto_pub -h localhost -t "room1/temperature" -m '{"temp": 25.5, "humidity": 60}'
    ```
-4. ดูผลใน Database หรือ Frontend ว่าค่าเปลี่ยนไหม
+
+4. **ตรวจสอบผลลัพธ์:**
+   - ดูใน Node-RED ว่ามี message เข้ามาหรือไม่
+   - ตรวจสอบ Database (ผ่าน phpMyAdmin: `http://192.168.100.131:8081`)
+   - ตรวจสอบ Frontend (`http://192.168.100.131`) ว่าค่าอุณหภูมิอัพเดทหรือไม่
 
 ---
 

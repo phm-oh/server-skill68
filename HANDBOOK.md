@@ -270,11 +270,39 @@
 **Error ที่จะเจอ:** `docker command not found` หรือ `connection refused`
 
 1. **แก้ไขไฟล์ Config:**
+
+   **วิธีที่ 1: ใช้ nano (แนะนำ - ง่ายกว่า)**
+   
+   **ติดตั้ง nano ใน container (ถ้ายังไม่มี):**
    ```bash
-   docker exec -it gitlab-runner vi /etc/gitlab-runner/config.toml
-   # หรือใช้ nano (ง่ายกว่า)
+   docker exec -it gitlab-runner apk add nano
+   # หรือถ้าใช้ image อื่น
+   docker exec -it gitlab-runner apt-get update && apt-get install -y nano
+   ```
+   
+   **แก้ไขไฟล์:**
+   ```bash
    docker exec -it gitlab-runner nano /etc/gitlab-runner/config.toml
    ```
+   
+   **วิธีใช้ nano:**
+   - ใช้ลูกศรเลื่อน cursor
+   - แก้ไขข้อความตามต้องการ
+   - **บันทึก:** กด `Ctrl + O` แล้ว Enter
+   - **ออก:** กด `Ctrl + X`
+   
+   **วิธีที่ 2: ใช้ vi (ถ้าไม่มี nano)**
+   
+   ```bash
+   docker exec -it gitlab-runner vi /etc/gitlab-runner/config.toml
+   ```
+   
+   **วิธีใช้ vi:**
+   - กด `i` เพื่อเข้าสู่โหมด Insert (แก้ไข)
+   - แก้ไขข้อความตามต้องการ
+   - กด `Esc` เพื่อออกจากโหมด Insert
+   - **บันทึกและออก:** พิมพ์ `:wq` แล้ว Enter
+   - **ออกโดยไม่บันทึก:** พิมพ์ `:q!` แล้ว Enter
 
 2. **ค้นหา `[runners.docker]` แล้วแก้ 2 บรรทัดนี้:**
    ```toml

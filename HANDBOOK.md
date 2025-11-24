@@ -163,13 +163,96 @@
    docker exec -it gitlab-runner gitlab-runner register
    ```
 
-4. **กรอกข้อมูลตามลำดับ:**
-   - **GitLab instance URL:** `http://192.168.100.130` (Enter)
-   - **Registration token:** วาง token ที่ copy มา (Enter)
-   - **Description:** `docker-runner` (Enter)
-   - **Tags:** (Enter - ข้าม)
-   - **Executor:** `docker` (**⚠️ ต้องพิมพ์ docker เท่านั้น ไม่ใช่ docker+machine หรือ shell**)
-   - **Default Docker image:** `docker:24` (Enter)
+4. **กรอกข้อมูลตามลำดับ (คำถามทีละบรรทัด):**
+
+   **คำถามที่ 1: Enter the GitLab instance URL**
+   ```
+   Enter the GitLab instance URL (for example, https://gitlab.com/):
+   ```
+   **คำตอบ:** พิมพ์ `http://192.168.100.130` แล้วกด **Enter**
+   ```
+   http://192.168.100.130
+   ```
+
+   **คำถามที่ 2: Enter the registration token**
+   ```
+   Enter the registration token:
+   ```
+   **คำตอบ:** วาง token ที่ copy จาก GitLab Web UI (รูปแบบ: `glrt-xxxxxxxxxxxxxxxxxxxx`) แล้วกด **Enter**
+   ```
+   glrt-xxxxxxxxxxxxxxxxxxxx
+   ```
+
+   **คำถามที่ 3: Enter a description for the runner**
+   ```
+   Enter a description for the runner:
+   ```
+   **คำตอบ:** พิมพ์ `docker-runner` แล้วกด **Enter**
+   ```
+   docker-runner
+   ```
+
+   **คำถามที่ 4: Enter tags for the runner (comma-separated)**
+   ```
+   Enter tags for the runner (comma-separated):
+   ```
+   **คำตอบ:** กด **Enter** เลย (ไม่ต้องใส่ tags)
+   ```
+   [Enter]
+   ```
+
+   **คำถามที่ 5: Enter optional maintenance note for the runner**
+   ```
+   Enter optional maintenance note for the runner:
+   ```
+   **คำตอบ:** กด **Enter** เลย (ไม่ต้องใส่ note)
+   ```
+   [Enter]
+   ```
+
+   **คำถามที่ 6: Enter an executor**
+   ```
+   Enter an executor: docker, docker+machine, docker-ssh+machine, kubernetes, custom, docker-ssh, parallels, shell, ssh, virtualbox:
+   ```
+   **คำตอบ:** พิมพ์ `docker` แล้วกด **Enter**
+   **⚠️ สำคัญ:** ต้องพิมพ์ `docker` เท่านั้น ไม่ใช่ `docker+machine` หรือ `shell`
+   ```
+   docker
+   ```
+
+   **คำถามที่ 7: Enter the default Docker image**
+   ```
+   Enter the default Docker image (for example, ruby:2.7):
+   ```
+   **คำตอบ:** พิมพ์ `docker:24` แล้วกด **Enter**
+   ```
+   docker:24
+   ```
+
+5. **ตัวอย่าง Output ที่ถูกต้อง:**
+   ```
+   Runtime platform                                    arch=amd64 os=linux pid=1234 revision=xxxxx version=xx.x.x
+   Running in system-mode.
+   
+   Enter the GitLab instance URL (for example, https://gitlab.com/):
+   http://192.168.100.130
+   Enter the registration token:
+   glrt-xxxxxxxxxxxxxxxxxxxx
+   Enter a description for the runner:
+   docker-runner
+   Enter tags for the runner (comma-separated):
+   
+   Enter optional maintenance note for the runner:
+   
+   Enter an executor: docker, docker+machine, docker-ssh+machine, kubernetes, custom, docker-ssh, parallels, shell, ssh, virtualbox:
+   docker
+   Enter the default Docker image (for example, ruby:2.7):
+   docker:24
+   
+   Runner registered successfully. Feel free to start it, but if it's running already the config should be automatically reloaded!
+   ```
+   
+   **✅ ถ้าเห็น "Runner registered successfully" แสดงว่าสำเร็จ!**
 
 5. **ตรวจสอบว่า register สำเร็จ:**
    ```bash

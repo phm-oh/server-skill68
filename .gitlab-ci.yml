@@ -58,14 +58,24 @@ deploy-production:
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
     - ssh-keyscan 192.168.100.102 >> ~/.ssh/known_hosts
-    - chmod 644 ~/.ssh/known_hosts
   script:
     - echo "Deploying to Production..."
-    # ส่งไฟล์ docker-compose.yml ไปทับที่ VM2
-    - scp -o StrictHostKeyChecking=no docker-compose.prod.yml dev@192.168.100.102:~/vm2-production/docker-compose.yml
-    # สั่ง Deploy
-    - ssh -o StrictHostKeyChecking=no dev@192.168.100.102 "cd ~/vm2-production && docker compose pull && docker compose down && docker compose up -d"
+
+    # แก้ tag จาก :latest → :abc1234 (commit ล่าสุด)
+    - export TAG=$CI_COMMIT_SHORT_SHA
+    - sed -i "s|backend:latest|backend:$TAG|g" docker-compose.prod.yml
+    - sed -i "s|frontend:latest|frontend:$TAG|g" docker-compose.prod.yml
+    - echo "ใช้ tag ใหม่: $TAG"
+
+    # ส่งไฟล์ที่แก้แล้วไป production
+    - scp -q -o StrictHostKeyChecking=no docker-compose.prod.yml dev@192.168.100.102:~/vm2-production/docker-compose.yml
+
+    # รันบน production (pull + ขึ้น container ใหม่แน่นอน)
+    - ssh -q -o StrictHostKeyChecking=no dev@192.168.100.102 "
+        cd ~/vm2-production && 
+        docker compose pull && 
+        docker compose up -d --force-recreation
+      "
+
   only:
     - main
-  when: manual
-

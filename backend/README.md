@@ -1,15 +1,29 @@
 # Backend - IoT Room Monitoring System
 
-Backend API สำหรับระบบ IoT Room Monitoring ใช้ Express.js + MariaDB + MQTT
+Backend API สำหรับระบบ IoT Room Monitoring ใช้ Express.js + MariaDB
+
+**หมายเหตุ:** Backend ไม่ใช้ MQTT client โดยตรง ใช้ Node-RED เป็นตัวกลาง
 
 ## Features
 
 - Authentication (JWT)
 - Room Management
-- Temperature Data Collection
+- Temperature Data Collection (รับจาก Node-RED ผ่าน HTTP)
 - Image Upload
 - User Management (Admin)
-- MQTT Integration
+- HTTP API Endpoint สำหรับรับข้อมูลจาก Node-RED
+
+## Architecture
+
+**Backend ไม่ใช้ MQTT client โดยตรง** ใช้ Node-RED เป็นตัวกลาง:
+
+```
+ESP32 → MQTT Broker → Node-RED → HTTP POST → Backend API
+```
+
+- ESP32 publish ไป MQTT topics
+- Node-RED subscribe MQTT แล้วส่ง HTTP POST มาที่ `/api/mqtt/:room`
+- Backend รับ HTTP POST และบันทึกลง Database
 
 ## Environment Variables
 
@@ -20,9 +34,10 @@ DB_PORT=3306
 DB_USER=devops
 DB_PASSWORD=devops123
 DB_NAME=devops_db
-MQTT_BROKER=mqtt://mqtt:1883
 JWT_SECRET=devops-secret-key-2024
 ```
+
+**หมายเหตุ:** ไม่ต้องตั้งค่า `MQTT_BROKER` เพราะ Backend ไม่ใช้ MQTT client โดยตรง
 
 ## API Endpoints
 
@@ -33,7 +48,7 @@ JWT_SECRET=devops-secret-key-2024
 - `GET /api/rooms/:roomId/temperature/latest` - Get latest temperature
 - `POST /api/rooms/:roomId/images` - Upload image
 - `GET /api/rooms/:roomId/images` - Get images
-- `POST /api/mqtt/:room` - MQTT endpoint (for Node-RED)
+- `POST /api/mqtt/:room` - HTTP endpoint สำหรับรับข้อมูลจาก Node-RED (Node-RED จะส่ง HTTP POST มาที่นี่)
 - `GET /api/users` - Get users (admin only)
 - `POST /api/users` - Create user (admin only)
 - `PUT /api/users/:userId` - Update user (admin only)

@@ -1,12 +1,12 @@
 // Backend API - IoT Room Monitoring System
-// Express.js + MariaDB + MQTT
+// Express.js + MariaDB
+// รับข้อมูลจาก Node-RED ผ่าน HTTP (ไม่ใช้ MQTT client โดยตรง)
 
 const express = require('express');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
-const mqtt = require('mqtt');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
@@ -52,44 +52,11 @@ const upload = multer({ storage: storage, limits: { fileSize: 5 * 1024 * 1024 } 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'devops-secret-key-2024';
 
-// MQTT Client (รับข้อมูลจาก ESP32)
-const mqttClient = mqtt.connect(process.env.MQTT_BROKER || 'mqtt://mqtt:1883');
-
-mqttClient.on('connect', () => {
-  console.log('MQTT Connected');
-  // Subscribe topics สำหรับ ESP32 3 ตัว
-  mqttClient.subscribe('room1/temperature', (err) => {
-    if (!err) console.log('Subscribed to room1/temperature');
-  });
-  mqttClient.subscribe('room2/temperature', (err) => {
-    if (!err) console.log('Subscribed to room2/temperature');
-  });
-  mqttClient.subscribe('room3/temperature', (err) => {
-    if (!err) console.log('Subscribed to room3/temperature');
-  });
-});
-
-// รับข้อมูลจาก MQTT และบันทึกลง Database
-mqttClient.on('message', async (topic, message) => {
-  try {
-    const data = JSON.parse(message.toString());
-    const roomNumber = topic.split('/')[0].replace('room', '');
-    
-    const [rooms] = await db.execute('SELECT id FROM rooms WHERE esp32_device_id = ?', 
-      [`ESP32-ROOM${roomNumber}`]);
-    
-    if (rooms.length > 0) {
-      const roomId = rooms[0].id;
-      await db.execute(
-        'INSERT INTO temperatures (room_id, temperature, humidity) VALUES (?, ?, ?)',
-        [roomId, data.temp || data.temperature, data.humidity || null]
-      );
-      console.log(`Saved temp: Room ${roomNumber} = ${data.temp || data.temperature}°C`);
-    }
-  } catch (err) {
-    console.error('MQTT message error:', err);
-  }
-});
+// ==========================================================================
+// หมายเหตุ: Backend ไม่ใช้ MQTT client โดยตรง
+// ใช้ Node-RED เป็นตัวกลาง: ESP32 → MQTT → Node-RED → HTTP POST → Backend
+// Backend แค่รับ HTTP POST ที่ /api/mqtt/:room
+// ==========================================================================
 
 // ==========================================================================
 // Authentication Middleware
@@ -264,7 +231,13 @@ app.post('/api/rooms/:roomId/images', authenticate, upload.single('image'), asyn
   }
 });
 
+// ==========================================================================
 // MQTT Endpoint (สำหรับ Node-RED ส่งข้อมูลมา)
+// ==========================================================================
+// สถาปัตยกรรม: ESP32 → MQTT Broker → Node-RED → HTTP POST → Backend
+// Node-RED จะ subscribe MQTT topics แล้วส่ง HTTP POST มาที่ endpoint นี้
+// ==========================================================================
+
 app.post('/api/mqtt/:room', async (req, res) => {
   try {
     const room = req.params.room;
@@ -280,6 +253,7 @@ app.post('/api/mqtt/:room', async (req, res) => {
         'INSERT INTO temperatures (room_id, temperature, humidity) VALUES (?, ?, ?)',
         [roomId, temp || temperature, humidity || null]
       );
+      console.log(`Saved temp from Node-RED: Room ${roomNumber} = ${temp || temperature}°C`);
       res.json({ success: true });
     } else {
       res.status(404).json({ error: 'Room not found' });

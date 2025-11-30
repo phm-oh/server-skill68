@@ -1,0 +1,116 @@
+services:
+  # ==========================================
+  # 1. Database
+  # ==========================================
+  db:
+    image: mariadb:10.6
+    container_name: iot-db
+    restart: always
+    command: --max_allowed_packet=64M  # Allow large queries (Base64 images)
+    environment:
+      - MARIADB_ROOT_PASSWORD=root
+      - MARIADB_DATABASE=iot_db
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "3307:3306"
+    networks:
+      - iot-net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # 2. Backend API
+  # ==========================================
+  backend:
+    build: ./backend
+    container_name: iot-backend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=iot_db
+    volumes:
+      - ./backend/uploads:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - iot-net
+
+  # ==========================================
+  # 3. Frontend Web
+  # ==========================================
+  frontend:
+    build: ./frontend
+    container_name: iot-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - iot-net
+
+  # ==========================================
+  # 4. MQTT Broker
+  # ==========================================
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: iot-mqtt
+    restart: always
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+    networks:
+      - iot-net
+
+  # ==========================================
+  # 5. Node-RED
+  # ==========================================
+  nodered:
+    image: nodered/node-red:3.1
+    container_name: iot-nodered
+    restart: always
+    ports:
+      - "1880:1880"
+    volumes:
+      - ./nodered/flows.json:/data/flows.json
+    depends_on:
+      - mqtt
+      - db
+    networks:
+      - iot-net
+
+  # ==========================================
+  # Tools: phpMyAdmin
+  # ==========================================
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: iot-pma
+    restart: always
+    ports:
+      - "8082:80"
+    environment:
+      - PMA_HOST=db
+    depends_on:
+      - db
+    networks:
+      - iot-net
+
+networks:
+  iot-net:
+    driver: bridge
+
+volumes:
+  db_data:
+

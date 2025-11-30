@@ -6,7 +6,7 @@ services:
   # Backend API
   # ==========================================================================
   backend:
-    image: 192.168.100.130:5050/root/devops-project/backend:latest
+    image: 192.168.100.101:5050/root/devops-project/backend:latest
     container_name: backend
     restart: always
     ports:
@@ -38,7 +38,7 @@ services:
   # Frontend
   # ==========================================================================
   frontend:
-    image: 192.168.100.130:5050/root/devops-project/frontend:latest
+    image: 192.168.100.101:5050/root/devops-project/frontend:latest
     container_name: frontend
     restart: always
     ports:

@@ -9,16 +9,16 @@ services:
     hostname: 'gitlab.local'
     environment:
       GITLAB_OMNIBUS_CONFIG: |
-        external_url 'http://192.168.100.130'
+        external_url 'http://192.168.100.101'
         nginx['listen_port'] = 80
         nginx['listen_https'] = false
-        registry_external_url 'http://192.168.100.130:5050'
+        registry_external_url 'http://192.168.100.101:5050'
         gitlab_rails['registry_enabled'] = true
         registry['enable'] = true
         registry_nginx['listen_port'] = 5050
         registry_nginx['listen_https'] = false
         gitlab_rails['gitlab_shell_ssh_port'] = 2222
-        gitlab_rails['initial_root_password'] = 'DevOps@2024!'
+        
         gitlab_rails['store_initial_root_password'] = true
     ports:
       - '80:80'

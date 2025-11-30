@@ -1,0 +1,131 @@
+services:
+  # ==========================================
+  # 1. Database
+  # ==========================================
+  db:
+    image: mariadb:10.6
+    container_name: iot-db
+    restart: always
+    command: --max_allowed_packet=64M
+    environment:
+      - MARIADB_ROOT_PASSWORD=root
+      - MARIADB_DATABASE=iot_db
+    volumes:
+      - db_data:/var/lib/mysql
+      # Note: Init SQL script is baked into backend image or mounted if needed
+      # For simplicity in CI/CD, we might need to mount it or run it manually
+      # But here we keep it simple.
+    ports:
+      - "3307:3306"
+    networks:
+      - iot-net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # 2. Backend API (From Registry)
+  # ==========================================
+  backend:
+    image: 192.168.100.101:5050/root/devops-project/backend:latest
+    container_name: iot-backend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=iot_db
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - iot-net
+
+  # ==========================================
+  # 3. Frontend Web (From Registry)
+  # ==========================================
+  frontend:
+    image: 192.168.100.101:5050/root/devops-project/frontend:latest
+    container_name: iot-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - iot-net
+
+  # ==========================================
+  # 4. MQTT Broker
+  # ==========================================
+  mqtt:
+    image: eclipse-mosquitto:2.0
+    container_name: iot-mqtt
+    restart: always
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      # We need config file. In prod, we might map it or bake it.
+      # For now, assuming we copy config or bake it.
+      # Or simpler: command line arg
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    # Command to enable anonymous (Quick fix for Prod without mounting config file)
+    command: mosquitto -c /mosquitto-no-auth.conf
+    # Wait, better to mount config if we can't bake it. 
+    # Let's assume we will copy config file via CI/CD too or create it.
+    # Actually, simpler to just use command arguments? No, mosquitto needs config file for listener.
+    # Let's use a simple hack: echo config > file && run
+    entrypoint: ["/bin/sh", "-c", "echo 'listener 1883' > /mosquitto.conf && echo 'allow_anonymous true' >> /mosquitto.conf && /usr/sbin/mosquitto -c /mosquitto.conf"]
+    networks:
+      - iot-net
+
+  # ==========================================
+  # 5. Node-RED
+  # ==========================================
+  nodered:
+    image: nodered/node-red:3.1
+    container_name: iot-nodered
+    restart: always
+    ports:
+      - "1880:1880"
+    volumes:
+      - nodered_data:/data
+      # Flows.json persistence?
+    depends_on:
+      - mqtt
+      - backend
+    networks:
+      - iot-net
+
+  # ==========================================
+  # Tools: phpMyAdmin
+  # ==========================================
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: iot-pma
+    restart: always
+    ports:
+      - "8082:80"
+    environment:
+      - PMA_HOST=db
+    depends_on:
+      - db
+    networks:
+      - iot-net
+
+networks:
+  iot-net:
+    driver: bridge
+
+volumes:
+  db_data:
+  nodered_data:
+  mosquitto_data:
+  mosquitto_log:
+

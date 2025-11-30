@@ -4,12 +4,6 @@
     "gitlab.local:5050",
     "localhost:5050"
   ],
-  "registry-mirrors": [],
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "100m",
-    "max-file": "3"
-  },
-  "storage-driver": "overlay2",
-  "live-restore": true
+  "registry-mirrors": [] 
+  
 }

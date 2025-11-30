@@ -1,0 +1,115 @@
+[
+    {
+        "id": "tab1",
+        "type": "tab",
+        "label": "IoT Flow",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "mqtt_in",
+        "type": "mqtt in",
+        "z": "tab1",
+        "name": "ESP32 Sensors",
+        "topic": "sensor/+/data",
+        "qos": "0",
+        "datatype": "json",
+        "broker": "mqtt_broker",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "x": 150,
+        "y": 120,
+        "wires": [
+            [
+                "function_process"
+            ]
+        ]
+    },
+    {
+        "id": "function_process",
+        "type": "function",
+        "z": "tab1",
+        "name": "Format Payload",
+        "func": "var roomName = msg.topic.split('/')[1];\nmsg.payload = {\n    roomName: roomName,\n    temp: msg.payload.temp,\n    humid: msg.payload.humid\n};\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 120,
+        "wires": [
+            [
+                "http_request"
+            ]
+        ]
+    },
+    {
+        "id": "http_request",
+        "type": "http request",
+        "z": "tab1",
+        "name": "Send to Backend",
+        "method": "POST",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "http://backend:3000/sensor/data",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 600,
+        "y": 120,
+        "wires": [
+            [
+                "debug_node"
+            ]
+        ]
+    },
+    {
+        "id": "debug_node",
+        "type": "debug",
+        "z": "tab1",
+        "name": "debug",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 800,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "mqtt_broker",
+        "type": "mqtt-broker",
+        "name": "Local MQTT",
+        "broker": "mqtt",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "sessionExpiry": ""
+    }
+]
